@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 
 enum Equipment {
@@ -25,11 +26,7 @@ class Player {
   String baseName;
 
   Player(this.baseName) {
-    resources = Map.fromIterable(
-      Equipment.values,
-      key: (e) => e,
-      value: (e) => 0,
-    );
+    resources = {for (var e in Equipment.values) e: 0};
     resources[Equipment.credit] = 500;
     resources[Equipment.manpower] = 100;
     resources[Equipment.efficiency] = 5;
@@ -62,6 +59,7 @@ class GameState extends ChangeNotifier {
     0,    // efficiency
     0,    // veins
   ];
+  final Random _random = Random();
 
   GameState() {
     players.add(Player("ACTAEON"));
@@ -80,6 +78,24 @@ class GameState extends ChangeNotifier {
   void setDifficulty(int diff) {
     difficulty = diff;
     notifyListeners();
+  }
+
+  void buyEquipment(int playerIndex, Equipment eq) {
+    var p = players[playerIndex];
+    if (p.resources[Equipment.credit]! >= costs[eq.index]) {
+      p.resources[eq] = p.resources[eq]! + 1;
+      p.resources[Equipment.credit] = p.resources[Equipment.credit]! - costs[eq.index];
+      notifyListeners();
+    }
+  }
+
+  void sellEquipment(int playerIndex, Equipment eq) {
+    var p = players[playerIndex];
+    if (p.resources[eq]! > 0) {
+      p.resources[eq] = p.resources[eq]! - 1;
+      p.resources[Equipment.credit] = p.resources[Equipment.credit]! + costs[eq.index];
+      notifyListeners();
+    }
   }
 
   void calculateLaborConditions(int playerIndex) {
@@ -161,10 +177,47 @@ class GameState extends ChangeNotifier {
       setStatus("EUREKA! You found DILITHIUM!!!");
       p.resources[Equipment.veins] = p.resources[Equipment.veins]! + 1;
       p.resources[Equipment.credit] = p.resources[Equipment.credit]! + 500;
+      notifyListeners();
     } else {
       setStatus("ICE AND ROCK");
     }
-    notifyListeners();
+  }
+
+  bool checkMeteorImpact(int playerIndex, Function(String) setStatus) {
+    var p = players[playerIndex];
+    if (p.resources[Equipment.drillRig]! <= 0) return false;
+
+    double r = _random.nextDouble() - (p.resources[Equipment.deflector]! * 0.2);
+    if (r >= 0.6) {
+      if (p.resources[Equipment.deflector]! > 0) {
+        setStatus("Meteor shower deflected!");
+      } else {
+        setStatus("Meteor shower! Drill rig damaged!");
+        p.resources[Equipment.drillRig] = p.resources[Equipment.drillRig]! - 1;
+      }
+      notifyListeners();
+      return true;
+    }
+    return false;
+  }
+
+  bool checkCaveIn(int playerIndex, int drillY, Function(String) setStatus) {
+    var p = players[playerIndex];
+    if (p.resources[Equipment.drillRig]! <= 0 || p.resources[Equipment.veins]! <= 0) return false;
+
+    double r = _random.nextDouble() - (p.resources[Equipment.safety]! * 0.15);
+    if (r >= 0.7 && drillY > 20) {
+      if (p.resources[Equipment.safety]! > 0) {
+        setStatus("Cave-in prevented by safety measures!");
+      } else {
+        setStatus("Cave-in! Lost workers and vein!");
+        p.resources[Equipment.manpower] = p.resources[Equipment.manpower]! - _random.nextInt(5) - 1;
+        p.resources[Equipment.veins] = p.resources[Equipment.veins]! - 1;
+      }
+      notifyListeners();
+      return true;
+    }
+    return false;
   }
 
   void updateCredits(int playerIndex) {
@@ -179,5 +232,84 @@ class GameState extends ChangeNotifier {
         .round();
     p.resources[Equipment.status] = p.resources[Equipment.status]! + p.resources[Equipment.veins]!;
     notifyListeners();
+  }
+
+  void updateCosts() {
+    for (int z = 1; z <= 8; z++) {
+      int x = 0;
+      for (int y = 0; y < numPlayers; y++) {
+        x += players[y].resources[Equipment.values[z]]!;
+      }
+      x = x ~/ numPlayers;
+      if (z > 5) {
+        costs[z] = (costs[z] + (costs[z] * (x / (55 - difficulty))).round()).round();
+      } else {
+        costs[z] = (costs[z] + (costs[z] * x / (25 - difficulty)) - (costs[z] * 1 / (25 - difficulty))).round();
+        if (costs[z] < 100 * z) costs[z] = 100 * z;
+        if (costs[z] < 200 * z) costs[z] = 200 * z;
+      }
+    }
+    for (int z = 7; z <= 8; z++) {
+      if (costs[z] < 1) costs[z] = 1;
+      if (costs[z] > 50) costs[z] = 50;
+    }
+    if (costs[6] > 4000) costs[6] = 4000;
+
+    for (int z = 0; z < numPlayers; z++) {
+      for (int y = 8; y <= 12; y++) {
+        players[z].resources[Equipment.values[y]] = 0;
+      }
+    }
+    notifyListeners();
+  }
+
+  void advanceTime() {
+    day++;
+    if (day > 12) {
+      day = 1;
+      year++;
+    }
+    notifyListeners();
+  }
+
+  bool checkEndgame() {
+    // Line 8000: Check if it's March 2051
+    return year == 2051 && day == 3;
+  }
+
+  void calculateFinalStatus() {
+    // Line 8580: Calculate final status for all players
+    for (int i = 0; i < numPlayers; i++) {
+      var p = players[i];
+      p.resources[Equipment.status] = (p.resources[Equipment.veins]! * 100 +
+              p.resources[Equipment.efficiency]! +
+              p.resources[Equipment.manpower]! +
+              p.resources[Equipment.credit]! +
+              _random.nextInt(100))
+          .round(); // Simplified RND(1) to 0-99
+      if (p.resources[Equipment.status]! < 0) p.resources[Equipment.status] = 0;
+    }
+    notifyListeners();
+  }
+
+  Player? determineWinner() {
+    if (numPlayers == 1) {
+      // Line 8600-8630: Single-player win condition
+      if (players[0].resources[Equipment.status]! > 19) {
+        return players[0];
+      }
+      return null; // No winner if status <= 19
+    } else {
+      // Line 8530-8590: Multiplayer winner determination
+      int highestStatus = -1;
+      Player? winner;
+      for (var p in players) {
+        if (p.resources[Equipment.status]! > highestStatus) {
+          highestStatus = p.resources[Equipment.status]!;
+          winner = p;
+        }
+      }
+      return winner; // Returns null if all status <= 0, but unlikely after calculation
+    }
   }
 }

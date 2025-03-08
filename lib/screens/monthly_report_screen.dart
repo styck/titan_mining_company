@@ -11,7 +11,7 @@ class MonthlyReportScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     var gameState = context.watch<GameState>();
     int playerIndex = gameState.players.indexOf(player);
-    gameState.updateCredits(playerIndex); // Update on build
+    gameState.updateCredits(playerIndex);
 
     return Padding(
       padding: const EdgeInsets.all(16.0),

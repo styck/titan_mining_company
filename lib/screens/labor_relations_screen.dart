@@ -11,7 +11,7 @@ class LaborRelationsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     var gameState = context.watch<GameState>();
     int playerIndex = gameState.players.indexOf(player);
-    gameState.calculateLaborConditions(playerIndex); // Update on build
+    gameState.calculateLaborConditions(playerIndex);
 
     return Padding(
       padding: const EdgeInsets.all(16.0),
@@ -26,7 +26,7 @@ class LaborRelationsScreen extends StatelessWidget {
           const Text("CONDITIONS SET COST", style: TextStyle(fontWeight: FontWeight.bold)),
           Expanded(
             child: ListView.builder(
-              itemCount: 6, // laborPool to bonuses (indices 7-12)
+              itemCount: 6,
               itemBuilder: (context, index) {
                 var eq = Equipment.values[index + 7];
                 return Padding(

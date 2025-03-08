@@ -5,18 +5,18 @@ import 'equipment_screen.dart';
 import 'labor_relations_screen.dart';
 import 'mining_screen.dart';
 import 'monthly_report_screen.dart';
+import 'endgame_screen.dart';
 
 class GameLoopScreen extends StatefulWidget {
   const GameLoopScreen({super.key});
 
   @override
-  _GameLoopScreenState createState() => _GameLoopScreenState();
+  GameLoopScreenState createState() => GameLoopScreenState();
 }
 
-class _GameLoopScreenState extends State<GameLoopScreen> {
+class GameLoopScreenState extends State<GameLoopScreen> {
   int currentPlayerIndex = 0;
-  int currentPhase = 0; // 0: Equipment, 1: Labor, 2: Mining, 3: Report
-
+  int currentPhase = 0;
   final List<String> phases = ["Equipment", "Labor Relations", "Mining", "Monthly Report"];
 
   @override
@@ -41,13 +41,13 @@ class _GameLoopScreenState extends State<GameLoopScreen> {
 
   Widget _buildPhaseContent(GameState gameState) {
     switch (currentPhase) {
-      case 0: // Equipment Management
+      case 0:
         return EquipmentScreen(gameState.players[currentPlayerIndex]);
-      case 1: // Labor Relations
+      case 1:
         return LaborRelationsScreen(gameState.players[currentPlayerIndex]);
-      case 2: // Mining
+      case 2:
         return MiningScreen(gameState.players[currentPlayerIndex]);
-      case 3: // Monthly Report
+      case 3:
         return MonthlyReportScreen(gameState.players[currentPlayerIndex]);
       default:
         return const Center(child: Text("Unknown Phase"));
@@ -63,14 +63,15 @@ class _GameLoopScreenState extends State<GameLoopScreen> {
         currentPlayerIndex++;
         if (currentPlayerIndex >= gameState.numPlayers) {
           currentPlayerIndex = 0;
-          // Increment day/year (subroutine 7000)
-          gameState.day++;
-          if (gameState.day > 12) {
-            gameState.day = 1;
-            gameState.year++;
+          gameState.advanceTime();
+          gameState.updateCosts();
+          if (gameState.checkEndgame()) {
+            gameState.calculateFinalStatus();
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const EndgameScreen()),
+            );
           }
-          // TODO: Add endgame check (subroutine 8000)
-          gameState.notifyListeners();
         }
       }
     });

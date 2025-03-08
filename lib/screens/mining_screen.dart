@@ -12,10 +12,10 @@ class MiningScreen extends StatefulWidget {
   const MiningScreen(this.player, {super.key});
 
   @override
-  _MiningScreenState createState() => _MiningScreenState();
+  MiningScreenState createState() => MiningScreenState();
 }
 
-class _MiningScreenState extends State<MiningScreen> {
+class MiningScreenState extends State<MiningScreen> {
   int drillX = 50;
   int drillY = 19;
   int energy = 500;
@@ -43,66 +43,47 @@ class _MiningScreenState extends State<MiningScreen> {
 
   void _startMeteorCheck() {
     _meteorTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
-      _checkMeteorImpact(context.read<GameState>());
+      var gameState = context.read<GameState>();
+      int playerIndex = gameState.players.indexOf(widget.player);
+      setState(() {
+        bool eventOccurred = gameState.checkMeteorImpact(playerIndex, (status) {
+          statusMessage = status;
+          if (status.contains("Meteor")) {
+            meteors.add(Offset(_random.nextInt(150).toDouble(), _random.nextInt(60) + 19));
+            _soundManager.playSound('meteor');
+            Future.delayed(const Duration(milliseconds: 500), () => setState(() => meteors.clear()));
+          }
+        });
+        if (eventOccurred && gameState.players[playerIndex].resources[Equipment.drillRig]! <= 0) {
+          _meteorTimer?.cancel();
+          _caveInTimer?.cancel();
+        }
+      });
     });
   }
 
   void _startCaveInCheck() {
     _caveInTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
-      _checkCaveIn(context.read<GameState>());
-    });
-  }
-
-  void _checkMeteorImpact(GameState gameState) {
-    int playerIndex = gameState.players.indexOf(widget.player);
-    var p = gameState.players[playerIndex];
-    if (p.resources[Equipment.drillRig]! <= 0) return;
-
-    double r = _random.nextDouble() - (p.resources[Equipment.deflector]! * 0.2); // Tuned probability
-    if (r >= 0.6) { // 40% base chance, reduced by deflectors
+      var gameState = context.read<GameState>();
+      int playerIndex = gameState.players.indexOf(widget.player);
       setState(() {
-        meteors.add(Offset(_random.nextInt(150).toDouble(), _random.nextInt(60) + 19));
-        _soundManager.playSound('meteor');
-        Future.delayed(const Duration(milliseconds: 500), () => setState(() => meteors.clear()));
-        if (p.resources[Equipment.deflector]! > 0) {
-          statusMessage = "Meteor shower deflected!";
-        } else {
-          statusMessage = "Meteor shower! Drill rig damaged!";
-          p.resources[Equipment.drillRig] = p.resources[Equipment.drillRig]! - 1;
-          gameState.notifyListeners();
-          if (p.resources[Equipment.drillRig]! <= 0) {
-            _meteorTimer?.cancel();
-            _caveInTimer?.cancel();
+        gameState.checkCaveIn(playerIndex, drillY, (status) {
+          statusMessage = status;
+          if (status.contains("Cave-in")) {
+            _soundManager.playSound('caveIn');
           }
-        }
+        });
       });
-    }
-  }
-
-  void _checkCaveIn(GameState gameState) {
-    int playerIndex = gameState.players.indexOf(widget.player);
-    var p = gameState.players[playerIndex];
-    if (p.resources[Equipment.drillRig]! <= 0 || p.resources[Equipment.veins]! <= 0) return;
-
-    double r = _random.nextDouble() - (p.resources[Equipment.safety]! * 0.15); // Tuned probability
-    if (r >= 0.7 && drillY > 20) { // 30% base chance, reduced by safety, only underground
-      setState(() {
-        _soundManager.playSound('caveIn');
-        if (p.resources[Equipment.safety]! > 0) {
-          statusMessage = "Cave-in prevented by safety measures!";
-        } else {
-          statusMessage = "Cave-in! Lost workers and vein!";
-          p.resources[Equipment.manpower] = p.resources[Equipment.manpower]! - _random.nextInt(5) - 1;
-          p.resources[Equipment.veins] = p.resources[Equipment.veins]! - 1;
-          gameState.notifyListeners();
-        }
-      });
-    }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     var gameState = context.watch<GameState>();
+    final screenHeight = MediaQuery.of(context).size.height;
+    final canvasHeight = screenHeight * 0.5; // 50% of screen height
+    final canvasWidth = canvasHeight * 2; // Maintain aspect ratio (2:1, like 160:80 scaled)
+
     if (widget.player.resources[Equipment.drillRig]! < 1) {
       _meteorTimer?.cancel();
       _caveInTimer?.cancel();
@@ -111,12 +92,14 @@ class _MiningScreenState extends State<MiningScreen> {
 
     return Column(
       children: [
-        Expanded(
+        Container(
+          height: canvasHeight,
+          width: canvasWidth,
           child: GestureDetector(
             onPanUpdate: (details) {
               setState(() {
-                drillX += details.delta.dx.round();
-                drillY += details.delta.dy.round();
+                drillX += (details.delta.dx / (canvasWidth / 150)).round();
+                drillY += (details.delta.dy / (canvasHeight / 78)).round();
                 if (drillX < 0) drillX = 0;
                 if (drillX > 150) drillX = 150;
                 if (drillY < 19) drillY = 19;
@@ -128,19 +111,17 @@ class _MiningScreenState extends State<MiningScreen> {
                   drillY,
                   energy,
                   (status) {
-                    setState(() {
-                      statusMessage = status;
-                      if (status.contains("EUREKA")) {
-                        _soundManager.playSound('dilithium');
-                      }
-                    });
+                    statusMessage = status;
+                    if (status.contains("EUREKA")) {
+                      _soundManager.playSound('dilithium');
+                    }
                   },
                 );
               });
             },
             child: CustomPaint(
-              painter: MiningCanvas(drillX, drillY, meteors),
-              size: const Size(160, 80),
+              painter: MiningCanvas(drillX, drillY, meteors, canvasWidth, canvasHeight),
+              size: Size(canvasWidth, canvasHeight),
             ),
           ),
         ),
@@ -148,8 +129,9 @@ class _MiningScreenState extends State<MiningScreen> {
           padding: const EdgeInsets.all(16.0),
           child: Column(
             children: [
-              Text("Energy: $energy"),
-              Text(statusMessage),
+              Text("Energy: $energy", style: const TextStyle(fontSize: 18)),
+              Text("Drill Rigs: ${widget.player.resources[Equipment.drillRig]}", style: const TextStyle(fontSize: 18, color: Color(0xFF00FFFF))), // Cyan, like Atari
+              Text(statusMessage, style: const TextStyle(fontSize: 18)),
             ],
           ),
         ),

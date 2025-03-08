@@ -68,7 +68,7 @@ flutter:
     - assets/sounds/meteor.mp3
     - assets/sounds/cave_in.mp3
     - assets/sounds/dilithium.mp3
-    
+    - assets/sounds/endgame.mp3
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
 

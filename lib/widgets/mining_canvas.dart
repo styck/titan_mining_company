@@ -3,25 +3,44 @@ import 'package:flutter/material.dart';
 class MiningCanvas extends CustomPainter {
   final int drillX;
   final int drillY;
-  final List<Offset> meteors; // List of meteor positions
+  final List<Offset> meteors;
+  final double canvasWidth;
+  final double canvasHeight;
 
-  const MiningCanvas(this.drillX, this.drillY, this.meteors);
+  const MiningCanvas(this.drillX, this.drillY, this.meteors, this.canvasWidth, this.canvasHeight);
 
   @override
   void paint(Canvas canvas, Size size) {
-    var paint = Paint()..color = Colors.blue;
-    canvas.drawLine(Offset(0, 19), Offset(size.width, 19), paint); // Surface
-    paint.color = Colors.grey;
-    for (int z = 20; z < 80; z++) {
-      canvas.drawLine(Offset(0, z.toDouble()), Offset(size.width, z.toDouble()), paint);
-    }
-    paint.color = Colors.red;
-    canvas.drawRect(Rect.fromLTWH(drillX.toDouble(), drillY.toDouble(), 5, 5), paint); // Drill
+    // Use Atari-like colors
+    var paint = Paint()..color = const Color(0xFF000000); // Black background
+    canvas.drawRect(Rect.fromLTWH(0, 0, canvasWidth, canvasHeight), paint);
 
-    // Draw meteors
-    paint.color = Colors.orange;
+    paint.color = const Color(0xFF00FF00); // Green subsurface
+    canvas.drawRect(Rect.fromLTWH(0, 0, canvasWidth, canvasHeight * 0.9), paint); // 90% for subsurface
+
+    paint.color = const Color(0xFF008000); // Dark green surface/status bar
+    canvas.drawRect(Rect.fromLTWH(0, canvasHeight * 0.9, canvasWidth, canvasHeight * 0.1), paint);
+
+    // Drill (pink, like Atari screenshot)
+    paint.color = const Color(0xFFFF00FF); // Pink
+    canvas.drawRect(
+      Rect.fromLTWH(
+        drillX.toDouble() * (canvasWidth / 150), // Scale x to canvas width
+        drillY.toDouble() * (canvasHeight / 78), // Scale y to canvas height
+        5 * (canvasWidth / 150), // Scale drill size
+        5 * (canvasHeight / 78),
+      ),
+      paint,
+    );
+
+    // Meteors (orange)
+    paint.color = const Color(0xFFFFA500); // Orange
     for (var meteor in meteors) {
-      canvas.drawCircle(meteor, 3, paint); // Small orange circles for meteors
+      canvas.drawCircle(
+        Offset(meteor.dx * (canvasWidth / 150), meteor.dy * (canvasHeight / 78)),
+        3 * (canvasWidth / 150), // Scale meteor size
+        paint,
+      );
     }
   }
 
