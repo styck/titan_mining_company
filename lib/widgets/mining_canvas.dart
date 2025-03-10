@@ -6,7 +6,9 @@ class MiningCanvas extends CustomPainter {
   final List<Offset> meteors;
   final double canvasWidth;
   final double canvasHeight;
-  final int drillRigs; // Add total drill rigs to display
+  final int drillRigs;
+  final bool isLosingRig; // Flag to trigger animation
+  static const double animationDuration = 0.3; // Seconds for animation
 
   const MiningCanvas(
     this.drillX,
@@ -15,6 +17,7 @@ class MiningCanvas extends CustomPainter {
     this.canvasWidth,
     this.canvasHeight,
     this.drillRigs,
+    this.isLosingRig,
   );
 
   @override
@@ -28,8 +31,8 @@ class MiningCanvas extends CustomPainter {
     paint.color = const Color(0xFF008000); // Dark green surface/status bar
     canvas.drawRect(Rect.fromLTWH(0, canvasHeight * 0.9, canvasWidth, canvasHeight * 0.1), paint);
 
-    // Draw active drill (pink)
-    paint.color = const Color(0xFFFF00FF);
+    // Draw active drill with glow (pink with outer shadow)
+    paint.color = const Color(0xFFFF00FF); // Pink
     canvas.drawRect(
       Rect.fromLTWH(
         drillX.toDouble() * (canvasWidth / 150),
@@ -39,15 +42,33 @@ class MiningCanvas extends CustomPainter {
       ),
       paint,
     );
-
-    // Draw stack of drill rigs in top-left corner
-    paint.color = const Color(0xFFFF00FF); // Same pink as active drill
-    for (int i = 0; i < drillRigs; i++) {
+    // Glow effect (simple shadow simulation)
+    for (double offset = 1; offset <= 3; offset += 1) {
+      paint.color = const Color(0xFFFF00FF).withAlpha((255 * (0.3 / offset)).round()); // Fading pink with alpha
       canvas.drawRect(
         Rect.fromLTWH(
-          5 * (canvasWidth / 150), // Small offset from left
-          (5 + i * 6) * (canvasHeight / 78), // Stack vertically
-          5 * (canvasWidth / 150), // Small size
+          (drillX.toDouble() - offset) * (canvasWidth / 150),
+          (drillY.toDouble() - offset) * (canvasHeight / 78),
+          (5 + 2 * offset) * (canvasWidth / 150),
+          (5 + 2 * offset) * (canvasHeight / 78),
+        ),
+        paint,
+      );
+    }
+
+    // Draw stack of drill rigs with animation for loss
+    paint.color = const Color(0xFFFF00FF);
+    for (int i = 0; i < drillRigs; i++) {
+      double yOffset = 5 + i * 6;
+      if (isLosingRig && i == drillRigs - 1) { // Animate the top rig being lost
+        yOffset += 10 * (1 - (animationDuration * 1000 / 300)); // Move up and fade
+        paint.color = const Color(0xFFFF00FF).withAlpha((255 * (1 - (animationDuration * 1000 / 300))).round());
+      }
+      canvas.drawRect(
+        Rect.fromLTWH(
+          5.0 * (canvasWidth / 150), // Ensure double
+          yOffset.toDouble() * (canvasHeight / 78), // Ensure double
+          5 * (canvasWidth / 150),
           5 * (canvasHeight / 78),
         ),
         paint,
@@ -70,6 +91,7 @@ class MiningCanvas extends CustomPainter {
     return drillX != oldDelegate.drillX ||
         drillY != oldDelegate.drillY ||
         meteors != oldDelegate.meteors ||
-        drillRigs != oldDelegate.drillRigs;
+        drillRigs != oldDelegate.drillRigs ||
+        isLosingRig != oldDelegate.isLosingRig;
   }
 }

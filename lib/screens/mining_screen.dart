@@ -25,12 +25,40 @@ class MiningScreenState extends State<MiningScreen> {
   Timer? _caveInTimer;
   final SoundManager _soundManager = SoundManager();
   final Random _random = Random();
+  bool _isFirstEntry = true; // Flag for tooltip
+  bool _isLosingRig = false; // Flag for animation
 
   @override
   void initState() {
     super.initState();
     _startMeteorCheck();
     _startCaveInCheck();
+    // Delay tooltip until after the first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_isFirstEntry) {
+        _showTooltip();
+        _isFirstEntry = false; // Show only once
+      }
+    });
+  }
+
+  void _showTooltip() {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => AlertDialog(
+        title: const Text("Mining Phase Tips"),
+        content: const Text(
+          "You control one drill at a time. Additional drill rigs are spares that can be lost to hazards. Use DEFLECTOR and SAFETY to protect your operation!",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Got It"),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -45,6 +73,7 @@ class MiningScreenState extends State<MiningScreen> {
     _meteorTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
       var gameState = context.read<GameState>();
       int playerIndex = gameState.players.indexOf(widget.player);
+      int initialRigs = gameState.players[playerIndex].resources[Equipment.drillRig]!;
       setState(() {
         bool eventOccurred = gameState.checkMeteorImpact(playerIndex, (status) {
           statusMessage = status;
@@ -52,6 +81,10 @@ class MiningScreenState extends State<MiningScreen> {
             meteors.add(Offset(_random.nextInt(150).toDouble(), _random.nextInt(60) + 19));
             _soundManager.playSound('meteor');
             Future.delayed(const Duration(milliseconds: 500), () => setState(() => meteors.clear()));
+            if (gameState.players[playerIndex].resources[Equipment.drillRig]! < initialRigs) {
+              _isLosingRig = true; // Trigger animation
+              Future.delayed(const Duration(milliseconds: 300), () => setState(() => _isLosingRig = false));
+            }
           }
         });
         if (eventOccurred && gameState.players[playerIndex].resources[Equipment.drillRig]! <= 0) {
@@ -126,7 +159,8 @@ class MiningScreenState extends State<MiningScreen> {
                 meteors,
                 canvasWidth,
                 canvasHeight,
-                widget.player.resources[Equipment.drillRig]!, // Pass total drill rigs
+                widget.player.resources[Equipment.drillRig]!,
+                _isLosingRig,
               ),
               size: Size(canvasWidth, canvasHeight),
             ),
@@ -138,7 +172,7 @@ class MiningScreenState extends State<MiningScreen> {
             children: [
               Text("Energy: $energy", style: const TextStyle(fontSize: 18)),
               Text(
-                "Drill Rigs Available: ${widget.player.resources[Equipment.drillRig]}", // Clarify label
+                "Drill Rigs Available: ${widget.player.resources[Equipment.drillRig]}",
                 style: const TextStyle(fontSize: 18, color: Color(0xFF00FFFF)),
               ),
               Text(statusMessage, style: const TextStyle(fontSize: 18)),
