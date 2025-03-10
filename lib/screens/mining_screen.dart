@@ -81,8 +81,8 @@ class MiningScreenState extends State<MiningScreen> {
   Widget build(BuildContext context) {
     var gameState = context.watch<GameState>();
     final screenHeight = MediaQuery.of(context).size.height;
-    final canvasHeight = screenHeight * 0.5; // 50% of screen height
-    final canvasWidth = canvasHeight * 2; // Maintain aspect ratio (2:1, like 160:80 scaled)
+    final canvasHeight = screenHeight * 0.5;
+    final canvasWidth = canvasHeight * 2;
 
     if (widget.player.resources[Equipment.drillRig]! < 1) {
       _meteorTimer?.cancel();
@@ -120,7 +120,14 @@ class MiningScreenState extends State<MiningScreen> {
               });
             },
             child: CustomPaint(
-              painter: MiningCanvas(drillX, drillY, meteors, canvasWidth, canvasHeight),
+              painter: MiningCanvas(
+                drillX,
+                drillY,
+                meteors,
+                canvasWidth,
+                canvasHeight,
+                widget.player.resources[Equipment.drillRig]!, // Pass total drill rigs
+              ),
               size: Size(canvasWidth, canvasHeight),
             ),
           ),
@@ -130,7 +137,10 @@ class MiningScreenState extends State<MiningScreen> {
           child: Column(
             children: [
               Text("Energy: $energy", style: const TextStyle(fontSize: 18)),
-              Text("Drill Rigs: ${widget.player.resources[Equipment.drillRig]}", style: const TextStyle(fontSize: 18, color: Color(0xFF00FFFF))), // Cyan, like Atari
+              Text(
+                "Drill Rigs Available: ${widget.player.resources[Equipment.drillRig]}", // Clarify label
+                style: const TextStyle(fontSize: 18, color: Color(0xFF00FFFF)),
+              ),
               Text(statusMessage, style: const TextStyle(fontSize: 18)),
             ],
           ),
