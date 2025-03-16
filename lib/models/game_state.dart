@@ -162,18 +162,26 @@ class GameState extends ChangeNotifier {
     p.resources[Equipment.efficiency] = ef.round();
   }
 
-  void updateMining(int playerIndex, int drillX, int drillY, int energy, Function(String) setStatus) {
+  void updateMining(int playerIndex, double drillXNormalized, double drillYNormalized, int energy, double canvasWidth, double canvasHeight, Function(String) setStatus) {
     var p = players[playerIndex];
     if (energy < 1) {
       setStatus("Out of Energy!");
       return;
     }
-    if (drillY < 20) {
+    // Surface check (y < 25% of subsurface height, scaled from original 19/78 ~ 0.2436)
+    if (drillYNormalized < 0.25) {
       setStatus("SURFACE");
       return;
     }
-    int v1 = 50, v2 = 40, ra = 10 - difficulty;
-    if (drillX >= v1 - ra && drillX <= v1 + ra && drillY >= v2 - ra && drillY <= v2 + ra) {
+    // Target at ~33% across (50/150), ~50% down subsurface (40/78 adjusted for subsurface)
+    double targetXNormalized = 0.3333; // 50 / 150
+    double targetYNormalized = 0.5; // 40 / 78, adjusted for subsurface starting at 0.25
+    double raNormalized = (10 - difficulty) / 150.0; // Scale radius to normalized space (150 units wide)
+    
+    if (drillXNormalized >= targetXNormalized - raNormalized &&
+        drillXNormalized <= targetXNormalized + raNormalized &&
+        drillYNormalized >= targetYNormalized - raNormalized &&
+        drillYNormalized <= targetYNormalized + raNormalized) {
       setStatus("EUREKA! You found DILITHIUM!!!");
       p.resources[Equipment.veins] = p.resources[Equipment.veins]! + 1;
       p.resources[Equipment.credit] = p.resources[Equipment.credit]! + 500;
@@ -201,12 +209,12 @@ class GameState extends ChangeNotifier {
     return false;
   }
 
-  bool checkCaveIn(int playerIndex, int drillY, Function(String) setStatus) {
+  bool checkCaveIn(int playerIndex, double drillYNormalized, Function(String) setStatus) {
     var p = players[playerIndex];
     if (p.resources[Equipment.drillRig]! <= 0 || p.resources[Equipment.veins]! <= 0) return false;
 
     double r = _random.nextDouble() - (p.resources[Equipment.safety]! * 0.15);
-    if (r >= 0.7 && drillY > 20) {
+    if (r >= 0.7 && drillYNormalized > 0.25) { // Underground check scaled
       if (p.resources[Equipment.safety]! > 0) {
         setStatus("Cave-in prevented by safety measures!");
       } else {
@@ -273,12 +281,10 @@ class GameState extends ChangeNotifier {
   }
 
   bool checkEndgame() {
-    // Line 8000: Check if it's March 2051
     return year == 2051 && day == 3;
   }
 
   void calculateFinalStatus() {
-    // Line 8580: Calculate final status for all players
     for (int i = 0; i < numPlayers; i++) {
       var p = players[i];
       p.resources[Equipment.status] = (p.resources[Equipment.veins]! * 100 +
@@ -286,7 +292,7 @@ class GameState extends ChangeNotifier {
               p.resources[Equipment.manpower]! +
               p.resources[Equipment.credit]! +
               _random.nextInt(100))
-          .round(); // Simplified RND(1) to 0-99
+          .round();
       if (p.resources[Equipment.status]! < 0) p.resources[Equipment.status] = 0;
     }
     notifyListeners();
@@ -294,13 +300,11 @@ class GameState extends ChangeNotifier {
 
   Player? determineWinner() {
     if (numPlayers == 1) {
-      // Line 8600-8630: Single-player win condition
       if (players[0].resources[Equipment.status]! > 19) {
         return players[0];
       }
-      return null; // No winner if status <= 19
+      return null;
     } else {
-      // Line 8530-8590: Multiplayer winner determination
       int highestStatus = -1;
       Player? winner;
       for (var p in players) {
@@ -309,7 +313,7 @@ class GameState extends ChangeNotifier {
           winner = p;
         }
       }
-      return winner; // Returns null if all status <= 0, but unlikely after calculation
+      return winner;
     }
   }
 }
