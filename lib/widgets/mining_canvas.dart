@@ -6,117 +6,98 @@ class MiningCanvas extends CustomPainter {
   final List<Offset> meteors;
   final double canvasWidth;
   final double canvasHeight;
-  final int drillRigs;
+  final int numRigs;
   final bool isLosingRig;
-  final double targetXNormalized; // Add target position
+  final double targetXNormalized;
   final double targetYNormalized;
-  final double targetRadiusNormalized; // Add target radius
-  final bool showDebugIndicator; // Debug flag
-  static const double animationDuration = 0.3;
+  final double targetRadiusNormalized;
+  final bool showDebugIndicator;
 
-  const MiningCanvas(
+  MiningCanvas(
     this.drillXNormalized,
     this.drillYNormalized,
     this.meteors,
     this.canvasWidth,
     this.canvasHeight,
-    this.drillRigs,
+    this.numRigs,
     this.isLosingRig,
     this.targetXNormalized,
     this.targetYNormalized,
-    this.targetRadiusNormalized,
-    {this.showDebugIndicator = false} // Default to false
-  );
+    this.targetRadiusNormalized, {
+    this.showDebugIndicator = false,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
-    var paint = Paint()..color = const Color(0xFF000000); // Black background
-    canvas.drawRect(Rect.fromLTWH(0, 0, canvasWidth, canvasHeight), paint);
-
-    paint.color = const Color(0xFF00FF00); // Green subsurface
-    canvas.drawRect(Rect.fromLTWH(0, 0, canvasWidth, canvasHeight * 0.9), paint);
-
-    paint.color = const Color(0xFF008000); // Dark green surface/status bar
-    canvas.drawRect(Rect.fromLTWH(0, canvasHeight * 0.9, canvasWidth, canvasHeight * 0.1), paint);
-
-    // Debug: Draw Dilithium target area
-    if (showDebugIndicator) {
-      paint.color = const Color(0xFFFF0000).withAlpha(50); // Semi-transparent red
-      canvas.drawCircle(
-        Offset(targetXNormalized * canvasWidth, targetYNormalized * canvasHeight),
-        targetRadiusNormalized * canvasWidth, // Scale radius to canvas width
-        paint,
-      );
-      // Draw center point for precision
-      paint.color = const Color(0xFFFF0000);
-      canvas.drawCircle(
-        Offset(targetXNormalized * canvasWidth, targetYNormalized * canvasHeight),
-        2, // Small dot
-        paint,
-      );
-    }
-
-    // Draw active drill with glow (pink with outer shadow)
-    paint.color = const Color(0xFFFF00FF);
+    // Draw the ground (brown layer from Y=0 to Y=0.2436)
+    final groundHeight = 0.2436 * canvasHeight;
+    final groundPaint = Paint()..color = Colors.brown;
     canvas.drawRect(
-      Rect.fromLTWH(
-        drillXNormalized * canvasWidth,
-        drillYNormalized * canvasHeight,
-        5 * (canvasWidth / 150),
-        5 * (canvasHeight / 78),
-      ),
-      paint,
+      Rect.fromLTWH(0, 0, canvasWidth, groundHeight),
+      groundPaint,
     );
-    for (double offset = 1; offset <= 3; offset += 1) {
-      paint.color = const Color(0xFFFF00FF).withAlpha((255 * (0.3 / offset)).round());
+
+    // Draw the subsurface area (gray, below the ground)
+    final subsurfacePaint = Paint()..color = Colors.grey;
+    canvas.drawRect(
+      Rect.fromLTWH(0, groundHeight, canvasWidth, canvasHeight - groundHeight),
+      subsurfacePaint,
+    );
+
+    // Draw the remaining drill rigs in the upper left corner
+    final rigPaint = Paint()..color = Colors.blue;
+    const double rigSize = 10.0;
+    const double rigSpacing = 5.0;
+    for (int i = 0; i < numRigs; i++) {
       canvas.drawRect(
         Rect.fromLTWH(
-          (drillXNormalized * canvasWidth) - offset,
-          (drillYNormalized * canvasHeight) - offset,
-          (5 + 2 * offset) * (canvasWidth / 150),
-          (5 + 2 * offset) * (canvasHeight / 78),
+          10.0 + i * (rigSize + rigSpacing), // X position (spaced horizontally)
+          10.0, // Y position (upper left corner)
+          rigSize,
+          rigSize,
         ),
-        paint,
+        rigPaint,
       );
     }
 
-    // Draw stack of drill rigs with animation for loss
-    paint.color = const Color(0xFFFF00FF);
-    for (int i = 0; i < drillRigs; i++) {
-      double yOffsetNormalized = 0.05 + i * 0.06;
-      if (isLosingRig && i == drillRigs - 1) {
-        yOffsetNormalized += 0.1 * (1 - (animationDuration * 1000 / 300));
-        paint.color = const Color(0xFFFF00FF).withAlpha((255 * (1 - (animationDuration * 1000 / 300))).round());
-      }
-      canvas.drawRect(
-        Rect.fromLTWH(
-          0.05 * canvasWidth,
-          yOffsetNormalized * canvasHeight,
-          5 * (canvasWidth / 150),
-          5 * (canvasHeight / 78),
-        ),
-        paint,
-      );
-    }
-
-    // Meteors (orange)
-    paint.color = const Color(0xFFFFA500);
+    // Draw meteors
+    final meteorPaint = Paint()..color = Colors.red;
     for (var meteor in meteors) {
       canvas.drawCircle(
         Offset(meteor.dx * canvasWidth, meteor.dy * canvasHeight),
-        3 * (canvasWidth / 150),
-        paint,
+        10,
+        meteorPaint,
+      );
+    }
+
+    // Draw the drill rig
+    final drillPaint = Paint()
+      ..color = isLosingRig ? Colors.red : Colors.blue;
+    final drillSize = 10.0;
+    canvas.drawRect(
+      Rect.fromLTWH(
+        drillXNormalized * canvasWidth - drillSize / 2,
+        drillYNormalized * canvasHeight - drillSize / 2,
+        drillSize,
+        drillSize,
+      ),
+      drillPaint,
+    );
+
+    // Draw the target (debug indicator) if enabled
+    if (showDebugIndicator) {
+      final targetPaint = Paint()
+        ..color = Colors.red.withOpacity(0.5)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2;
+      canvas.drawCircle(
+        Offset(targetXNormalized * canvasWidth, targetYNormalized * canvasHeight),
+        targetRadiusNormalized * canvasWidth,
+        targetPaint,
       );
     }
   }
 
   @override
-  bool shouldRepaint(covariant MiningCanvas oldDelegate) {
-    return drillXNormalized != oldDelegate.drillXNormalized ||
-        drillYNormalized != oldDelegate.drillYNormalized ||
-        meteors != oldDelegate.meteors ||
-        drillRigs != oldDelegate.drillRigs ||
-        isLosingRig != oldDelegate.isLosingRig ||
-        showDebugIndicator != oldDelegate.showDebugIndicator;
-  }
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }

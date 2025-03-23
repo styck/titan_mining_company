@@ -1,5 +1,7 @@
 import 'dart:math';
 import 'package:flutter/foundation.dart';
+import 'package:logger/logger.dart';
+import 'package:intl/intl.dart';
 
 enum Equipment {
   status,
@@ -35,6 +37,17 @@ class Player {
 }
 
 class GameState extends ChangeNotifier {
+  final logger = Logger(
+    printer: PrettyPrinter(
+      methodCount: 0,
+      errorMethodCount: 5,
+      lineLength: 120,
+      colors: true,
+      printEmojis: true,
+      dateTimeFormat: (dateTime) => DateFormat('yyyy-MM-dd HH:mm:ss.SSS').format(dateTime),
+    ),
+  );
+
   int day = 0;
   int year = 2050;
   int numPlayers = 1;
@@ -162,26 +175,32 @@ class GameState extends ChangeNotifier {
     p.resources[Equipment.efficiency] = ef.round();
   }
 
-  void updateMining(int playerIndex, double drillXNormalized, double drillYNormalized, int energy, double canvasWidth, double canvasHeight, Function(String) setStatus) {
+  void updateMining(
+    int playerIndex,
+    double drillXNormalized,
+    double drillYNormalized,
+    int energy,
+    double canvasWidth,
+    double canvasHeight,
+    Function(String) setStatus,
+    double targetXNormalized, // Pass target position from MiningScreen
+    double targetYNormalized,
+    double targetRadiusNormalized,
+  ) {
     var p = players[playerIndex];
     if (energy < 1) {
       setStatus("Out of Energy!");
       return;
     }
-    // Surface check (y < 25% of subsurface height, scaled from original 19/78 ~ 0.2436)
     if (drillYNormalized < 0.25) {
       setStatus("SURFACE");
       return;
     }
-    // Target at ~33% across (50/150), ~50% down subsurface (40/78 adjusted for subsurface)
-    double targetXNormalized = 0.3333; // 50 / 150
-    double targetYNormalized = 0.5; // 40 / 78, adjusted for subsurface starting at 0.25
-    double raNormalized = (10 - difficulty) / 150.0; // Scale radius to normalized space (150 units wide)
     
-    if (drillXNormalized >= targetXNormalized - raNormalized &&
-        drillXNormalized <= targetXNormalized + raNormalized &&
-        drillYNormalized >= targetYNormalized - raNormalized &&
-        drillYNormalized <= targetYNormalized + raNormalized) {
+    if (drillXNormalized >= targetXNormalized - targetRadiusNormalized &&
+        drillXNormalized <= targetXNormalized + targetRadiusNormalized &&
+        drillYNormalized >= targetYNormalized - targetRadiusNormalized &&
+        drillYNormalized <= targetYNormalized + targetRadiusNormalized) {
       setStatus("EUREKA! You found DILITHIUM!!!");
       p.resources[Equipment.veins] = p.resources[Equipment.veins]! + 1;
       p.resources[Equipment.credit] = p.resources[Equipment.credit]! + 500;
@@ -196,7 +215,7 @@ class GameState extends ChangeNotifier {
     if (p.resources[Equipment.drillRig]! <= 0) return false;
 
     double r = _random.nextDouble() - (p.resources[Equipment.deflector]! * 0.2);
-    if (r >= 0.6) {
+    if (r >= 0.8) {
       if (p.resources[Equipment.deflector]! > 0) {
         setStatus("Meteor shower deflected!");
       } else {
@@ -214,7 +233,7 @@ class GameState extends ChangeNotifier {
     if (p.resources[Equipment.drillRig]! <= 0 || p.resources[Equipment.veins]! <= 0) return false;
 
     double r = _random.nextDouble() - (p.resources[Equipment.safety]! * 0.15);
-    if (r >= 0.7 && drillYNormalized > 0.25) { // Underground check scaled
+    if (r >= 0.7 && drillYNormalized > 0.25) {
       if (p.resources[Equipment.safety]! > 0) {
         setStatus("Cave-in prevented by safety measures!");
       } else {

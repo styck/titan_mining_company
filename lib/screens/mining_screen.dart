@@ -19,19 +19,23 @@ class MiningScreen extends StatefulWidget {
 
 class MiningScreenState extends State<MiningScreen> {
   double drillXNormalized = 0.3333; // Start at 50/150
-  double drillYNormalized = 0.2436; // Start at 19/78
+  double drillYNormalized = 0.2436; // Start at 19/78 (ground level)
   int energy = 500;
-  String statusMessage = "Drill to find Dilithium!";
+  String statusMessage = "Position your rig at the surface!";
   List<Offset> meteors = [];
   Timer? _meteorTimer;
   Timer? _caveInTimer;
-  Timer? _eurekaTimer; // Timer to persist Eureka message
+  Timer? _eurekaTimer;
   final SoundManager _soundManager = SoundManager();
   final Random _random = Random();
   bool _isFirstEntry = true;
   bool _isLosingRig = false;
   bool _isOutOfEnergy = false;
-  bool _showEurekaHighlight = false; // Flag for visual highlight
+  bool _showEurekaHighlight = false;
+  bool _moveX = false;
+  bool _hasMoved = false;
+  bool _hasFoundCrystal = false;
+  bool _positioningPhase = true; // Track if in positioning phase (horizontal movement only)
 
   final logger = Logger(
     printer: PrettyPrinter(
@@ -46,8 +50,8 @@ class MiningScreenState extends State<MiningScreen> {
 
   static const bool showDebugIndicator = true;
 
-  final double targetXNormalized = 0.3333; // 50 / 150
-  final double targetYNormalized = 0.5; // 40 / 78, adjusted for subsurface
+  double targetXNormalized = 0.3333; // Initial position: 50 / 150
+  double targetYNormalized = 0.5; // Initial position: 40 / 78, adjusted for subsurface
   late double targetRadiusNormalized;
 
   @override
@@ -75,7 +79,7 @@ class MiningScreenState extends State<MiningScreen> {
       builder: (context) => AlertDialog(
         title: const Text("Mining Phase Tips"),
         content: const Text(
-          "You control one drill at a time. Additional drill rigs are spares that can be lost to hazards. Use DEFLECTOR and SAFETY to protect your operation! Start exploring near the center of the canvas to find Dilithium.",
+          "First, move your rig left or right to position it at the surface. Then, drill downward to find Dilithium below the ground. Use DEFLECTOR and SAFETY to protect your operation!",
         ),
         actions: [
           TextButton(
@@ -101,8 +105,8 @@ class MiningScreenState extends State<MiningScreen> {
   }
 
   void _startMeteorCheck() {
-    logger.i("Starting meteor check timer (every 3 seconds)");
-    _meteorTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+    logger.i("Starting meteor check timer (every 10 seconds)");
+    _meteorTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
       var gameState = context.read<GameState>();
       int playerIndex = gameState.players.indexOf(widget.player);
       int initialRigs = gameState.players[playerIndex].resources[Equipment.drillRig]!;
@@ -161,35 +165,82 @@ class MiningScreenState extends State<MiningScreen> {
   }
 
   void _switchToNextRigIfAvailable(GameState gameState) {
-    if (gameState.players[gameState.players.indexOf(widget.player)].resources[Equipment.drillRig]! > 0) {
-      logger.i("Energy depleted, switching to next rig. Rigs remaining: ${gameState.players[gameState.players.indexOf(widget.player)].resources[Equipment.drillRig]}");
+    int playerIndex = gameState.players.indexOf(widget.player);
+    if (gameState.players[playerIndex].resources[Equipment.drillRig]! > 0) {
+      logger.i("Switching to next rig. Rigs remaining: ${gameState.players[playerIndex].resources[Equipment.drillRig]}");
       setState(() {
         energy = 500;
         _isOutOfEnergy = false;
+        _hasFoundCrystal = false;
+        _positioningPhase = true;
         drillXNormalized = 0.3333;
         drillYNormalized = 0.2436;
-        statusMessage = "Drill to find Dilithium! (New Rig)";
+        statusMessage = "Position your rig at the surface!";
       });
     } else {
-      logger.w("Energy depleted and no rigs left, stopping mining phase");
+      logger.w("No rigs left, stopping mining phase");
       _meteorTimer?.cancel();
       _caveInTimer?.cancel();
+      setState(() {
+        statusMessage = "Mining Phase Ended: No Rigs Left";
+      });
     }
   }
 
-  void _showEurekaNotification(String status) {
-    if (status.contains("EUREKA")) {
+  void _randomizeCrystalPosition() {
+    // Ensure the crystal is within a reachable distance (Manhattan distance <= 0.5)
+    // and strictly below the surface (Y >= 0.25)
+    const double maxDistance = 0.5; // Maximum Manhattan distance (50 moves, 500 energy)
+    const double startX = 0.3333; // Starting X position
+    const double startY = 0.2436; // Starting Y position
+    const double groundLevel = 0.2436; // Ground level
+
+    // Randomly choose a total distance up to maxDistance
+    double totalDistance = _random.nextDouble() * maxDistance;
+
+    // Randomly split the distance between X and Y
+    double dx = _random.nextDouble() * totalDistance;
+    double dy = totalDistance - dx;
+
+    // Randomly decide the direction for X (positive or negative)
+    double newX = startX + (dx * (_random.nextBool() ? 1 : -1));
+    newX = newX.clamp(0.0, 1.0); // Clamp X to canvas bounds
+
+    // Ensure Y is strictly below the surface
+    // Randomize Y between groundLevel and groundLevel + dy, then adjust to fit distance
+    double maxYDistance = maxDistance - (newX - startX).abs(); // Remaining distance for Y
+    if (maxYDistance < 0) maxYDistance = 0; // Ensure non-negative
+    double newY = groundLevel + (_random.nextDouble() * maxYDistance);
+    newY = newY.clamp(groundLevel, 1.0); // Ensure Y is below ground
+
+    // If Y distance is less than intended due to clamping, adjust X to maintain total distance
+    double actualDy = newY - startY;
+    if (actualDy < dy) {
+      double remainingDistance = totalDistance - actualDy;
+      newX = startX + (remainingDistance * (_random.nextBool() ? 1 : -1));
+      newX = newX.clamp(0.0, 1.0);
+    }
+
+    targetXNormalized = newX;
+    targetYNormalized = newY;
+    logger.d("New Dilithium target position: (x: $targetXNormalized, y: $targetYNormalized)");
+  }
+
+  void _showEurekaNotification(String status, GameState gameState) {
+    if (status.contains("EUREKA") && !_hasFoundCrystal) {
       setState(() {
         statusMessage = status;
         _showEurekaHighlight = true;
+        _hasFoundCrystal = true;
       });
       _soundManager.playSound('dilithium');
       logger.i("Found Dilithium, playing sound and showing highlight");
       _eurekaTimer?.cancel();
       _eurekaTimer = Timer(const Duration(seconds: 3), () {
         setState(() {
-          if (!statusMessage.contains("EUREKA")) statusMessage = "Drill to find Dilithium!";
           _showEurekaHighlight = false;
+          _randomizeCrystalPosition();
+          _switchToNextRigIfAvailable(gameState);
         });
       });
     } else {
@@ -207,16 +258,18 @@ class MiningScreenState extends State<MiningScreen> {
     final canvasWidth = canvasHeight * 2;
     logger.d("Building MiningScreen with canvas size: ${canvasWidth}x$canvasHeight");
 
+    // Log the current state to debug
+    logger.d("Drill rigs: ${widget.player.resources[Equipment.drillRig]}, isOutOfEnergy: $_isOutOfEnergy");
+
+    // Update status message based on conditions, but always show the full UI
     if (widget.player.resources[Equipment.drillRig]! < 1 && !_isOutOfEnergy) {
-      logger.w("No drill rigs available, cancelling timers and showing message");
+      logger.w("No drill rigs available, cancelling timers");
       _meteorTimer?.cancel();
       _caveInTimer?.cancel();
-      return const Center(child: Text("No Drill Rigs Available"));
-    }
-
-    if (_isOutOfEnergy && widget.player.resources[Equipment.drillRig]! <= 0) {
-      logger.w("Out of energy and no rigs left, showing message");
-      return const Center(child: Text("Out of Energy and No Rigs Left"));
+      statusMessage = "No Drill Rigs Available - Buy more in Equipment!";
+    } else if (_isOutOfEnergy && widget.player.resources[Equipment.drillRig]! <= 0) {
+      logger.w("Out of energy and no rigs left");
+      statusMessage = "Out of Energy and No Rigs Left";
     }
 
     return Column(
@@ -227,46 +280,113 @@ class MiningScreenState extends State<MiningScreen> {
           decoration: _showEurekaHighlight
               ? BoxDecoration(
                   border: Border.all(color: Colors.yellow, width: 5),
-                  color: Colors.yellow.withValues(alpha: 0.3), // Replace withOpacity with withValues
+                  color: Colors.yellow.withValues(alpha: 0.3),
                 )
               : null,
           child: GestureDetector(
+            onPanStart: (details) {
+              _hasMoved = false;
+            },
             onPanUpdate: (details) {
-              if (_isOutOfEnergy) {
-                logger.d("Cannot move: out of energy, checking for next rig");
+              if (_isOutOfEnergy || _hasFoundCrystal) {
+                logger.d("Cannot move: out of energy or crystal found, checking for next rig");
                 _switchToNextRigIfAvailable(gameState);
                 return;
               }
               setState(() {
                 double oldX = drillXNormalized;
                 double oldY = drillYNormalized;
-                drillXNormalized += details.delta.dx / canvasWidth;
-                drillYNormalized += details.delta.dy / canvasHeight;
-                drillXNormalized = drillXNormalized.clamp(0.0, 1.0);
-                drillYNormalized = drillYNormalized.clamp(0.25, 1.0);
-                if (energy > 0) {
-                  energy -= 10;
-                  if (energy <= 0) {
-                    energy = 0;
-                    _isOutOfEnergy = true;
-                    statusMessage = "Out of Energy!";
-                    logger.w("Energy depleted, stopping movement for this rig");
-                    _switchToNextRigIfAvailable(gameState);
+                const double stepSize = 0.01;
+
+                if (!_hasMoved) {
+                  double dx = details.delta.dx / canvasWidth;
+                  double dy = details.delta.dy / canvasHeight;
+                  _moveX = dx.abs() > dy.abs();
+                  _hasMoved = true;
+                }
+
+                if (_positioningPhase) {
+                  // Positioning phase: only allow horizontal movement
+                  if (_moveX) {
+                    double dx = details.delta.dx / canvasWidth;
+                    if (dx > 0) {
+                      drillXNormalized += stepSize; // Right
+                      logger.d("Moving right: dx=$dx");
+                    } else if (dx < 0) {
+                      drillXNormalized -= stepSize; // Left
+                      logger.d("Moving left: dx=$dx");
+                    }
+                  }
+                  // Transition to drilling phase if moving down
+                  if (!_moveX && details.delta.dy > 0) {
+                    _positioningPhase = false;
+                    statusMessage = "Drill to find Dilithium!";
+                    drillYNormalized += stepSize; // Down
+                    logger.d("Transitioning to drilling phase, moving down: dy=${details.delta.dy / canvasHeight}");
+                  }
+                } else {
+                  // Drilling phase: allow left, right, down (but not up past surface)
+                  if (_moveX) {
+                    double dx = details.delta.dx / canvasWidth;
+                    if (dx > 0) {
+                      drillXNormalized += stepSize; // Right
+                      logger.d("Moving right: dx=$dx");
+                    } else if (dx < 0) {
+                      drillXNormalized -= stepSize; // Left
+                      logger.d("Moving left: dx=$dx");
+                    }
+                  } else {
+                    double dy = details.delta.dy / canvasHeight;
+                    if (dy > 0) {
+                      drillYNormalized += stepSize; // Down
+                      logger.d("Moving down: dy=$dy");
+                    } else if (dy < 0 && drillYNormalized > 0.2436) {
+                      drillYNormalized -= stepSize; // Up, but not past surface
+                      logger.d("Moving up: dy=$dy");
+                    }
                   }
                 }
-                logger.d("Drill moved from (x: $oldX, y: $oldY) to (x: $drillXNormalized, y: $drillYNormalized), energy: $energy");
-                if (!_isOutOfEnergy) {
-                  gameState.updateMining(
-                    gameState.players.indexOf(widget.player),
-                    drillXNormalized,
-                    drillYNormalized,
-                    energy,
-                    canvasWidth,
-                    canvasHeight,
-                    _showEurekaNotification,
-                  );
+
+                drillXNormalized = drillXNormalized.clamp(0.0, 1.0);
+                drillYNormalized = drillYNormalized.clamp(0.2436, 1.0);
+
+                if (drillXNormalized != oldX || drillYNormalized != oldY) {
+                  if (energy > 0) {
+                    energy -= 10;
+                    if (energy <= 0) {
+                      energy = 0;
+                      _isOutOfEnergy = true;
+                      statusMessage = "Out of Energy! Rig lost.";
+                      logger.w("Energy depleted, losing a rig");
+                      // Decrement the rig count
+                      int playerIndex = gameState.players.indexOf(widget.player);
+                      gameState.players[playerIndex].resources[Equipment.drillRig] =
+                          gameState.players[playerIndex].resources[Equipment.drillRig]! - 1;
+                      gameState.notifyListeners(); // Notify listeners to update UI
+                      _switchToNextRigIfAvailable(gameState);
+                    }
+                  }
+                  logger.d("Drill moved from (x: $oldX, y: $oldY) to (x: $drillXNormalized, y: $drillYNormalized), energy: $energy");
+                  if (!_isOutOfEnergy) {
+                    gameState.updateMining(
+                      gameState.players.indexOf(widget.player),
+                      drillXNormalized,
+                      drillYNormalized,
+                      energy,
+                      canvasWidth,
+                      canvasHeight,
+                      (status) => _showEurekaNotification(status, gameState),
+                      targetXNormalized,
+                      targetYNormalized,
+                      targetRadiusNormalized,
+                    );
+                  }
                 }
               });
+            },
+            onPanEnd: (details) {
+              _moveX = false;
+              _hasMoved = false;
             },
             child: CustomPaint(
               painter: MiningCanvas(
